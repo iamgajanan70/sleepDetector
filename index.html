@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SENTINEL — Drowsiness Detection System</title>
+  <link rel="stylesheet" href="style.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;700;900&family=Share+Tech+Mono&family=Rajdhani:wght@300;400;500;600&display=swap" rel="stylesheet" />
+
+  <!-- MediaPipe -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+</head>
+<body>
+
+  <!-- Scanline + noise overlay -->
+  <div class="scanlines"></div>
+  <div class="noise"></div>
+
+  <!-- ALERT OVERLAY -->
+  <div id="alertOverlay" class="alert-overlay hidden">
+    <div class="alert-inner">
+      <div class="alert-icon">⚠</div>
+      <div class="alert-title">DROWSINESS DETECTED</div>
+      <div class="alert-sub">WAKE UP — STAY ALERT</div>
+      <div class="alert-pulse-ring"></div>
+      <div class="alert-pulse-ring delay1"></div>
+      <div class="alert-pulse-ring delay2"></div>
+    </div>
+    <!-- Video alert (place alert.mp4 in same folder) -->
+    <video id="alertVideo" loop muted playsinline>
+      <source src="alert.mp4" type="video/mp4" />
+    </video>
+  </div>
+
+  <!-- ===== HEADER ===== -->
+  <header class="hud-header">
+    <div class="header-left">
+      <div class="logo-mark">
+        <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
+          <circle cx="16" cy="16" r="14" stroke="var(--cyan)" stroke-width="1.5" />
+          <circle cx="16" cy="16" r="6" stroke="var(--cyan)" stroke-width="1.5" />
+          <line x1="2" y1="16" x2="10" y2="16" stroke="var(--cyan)" stroke-width="1.5" />
+          <line x1="22" y1="16" x2="30" y2="16" stroke="var(--cyan)" stroke-width="1.5" />
+          <line x1="16" y1="2" x2="16" y2="10" stroke="var(--cyan)" stroke-width="1.5" />
+          <line x1="16" y1="22" x2="16" y2="30" stroke="var(--cyan)" stroke-width="1.5" />
+        </svg>
+      </div>
+      <div class="brand">
+        <span class="brand-name">SENTINEL</span>
+        <span class="brand-sub">NEURAL FATIGUE MONITOR v2.1</span>
+      </div>
+    </div>
+    <div class="header-center">
+      <div class="system-status">
+        <span class="status-dot" id="systemDot"></span>
+        <span id="systemStatusText">INITIALIZING...</span>
+      </div>
+    </div>
+    <div class="header-right">
+      <div class="header-metric">
+        <span class="metric-label">FPS</span>
+        <span class="metric-val" id="fpsCounter">--</span>
+      </div>
+      <div class="header-metric">
+        <span class="metric-label">SESSION</span>
+        <span class="metric-val" id="sessionTimer">00:00</span>
+      </div>
+      <div class="corner-bracket top-right"></div>
+    </div>
+  </header>
+
+  <!-- ===== MAIN GRID ===== -->
+  <main class="main-grid">
+
+    <!-- LEFT PANEL -->
+    <aside class="panel left-panel">
+      <div class="panel-header">
+        <span class="panel-label">EYE METRICS</span>
+        <div class="panel-line"></div>
+      </div>
+
+      <div class="metric-block">
+        <div class="mb-label">LEFT EYE (EAR)</div>
+        <div class="ear-bar-wrap">
+          <div class="ear-bar" id="leftEarBar"></div>
+        </div>
+        <div class="mb-value" id="leftEarVal">0.000</div>
+      </div>
+
+      <div class="metric-block">
+        <div class="mb-label">RIGHT EYE (EAR)</div>
+        <div class="ear-bar-wrap">
+          <div class="ear-bar" id="rightEarBar"></div>
+        </div>
+        <div class="mb-value" id="rightEarVal">0.000</div>
+      </div>
+
+      <div class="metric-block">
+        <div class="mb-label">AVERAGE EAR</div>
+        <div class="ear-bar-wrap">
+          <div class="ear-bar avg" id="avgEarBar"></div>
+        </div>
+        <div class="mb-value" id="avgEarVal">0.000</div>
+      </div>
+
+      <div class="divider"></div>
+
+      <div class="panel-header">
+        <span class="panel-label">HEAD POSTURE</span>
+        <div class="panel-line"></div>
+      </div>
+
+      <div class="posture-grid">
+        <div class="posture-item">
+          <div class="pi-label">TILT</div>
+          <div class="pi-val" id="headTilt">0°</div>
+        </div>
+        <div class="posture-item">
+          <div class="pi-label">NOD</div>
+          <div class="pi-val" id="headNod">CENTER</div>
+        </div>
+        <div class="posture-item">
+          <div class="pi-label">TURN</div>
+          <div class="pi-val" id="headTurn">0°</div>
+        </div>
+        <div class="posture-item">
+          <div class="pi-label">GAZE</div>
+          <div class="pi-val" id="gazeDir">FORWARD</div>
+        </div>
+      </div>
+
+      <div class="divider"></div>
+
+      <div class="panel-header">
+        <span class="panel-label">BLINK ANALYSIS</span>
+        <div class="panel-line"></div>
+      </div>
+
+      <div class="blink-stats">
+        <div class="bs-item">
+          <span class="bs-label">TOTAL BLINKS</span>
+          <span class="bs-val" id="blinkCount">0</span>
+        </div>
+        <div class="bs-item">
+          <span class="bs-label">BLINK RATE /MIN</span>
+          <span class="bs-val" id="blinkRate">--</span>
+        </div>
+        <div class="bs-item">
+          <span class="bs-label">EYES CLOSED</span>
+          <span class="bs-val" id="eyesClosedDur">0.0s</span>
+        </div>
+        <div class="bs-item">
+          <span class="bs-label">PERCLOS</span>
+          <span class="bs-val" id="perclos">0%</span>
+        </div>
+      </div>
+    </aside>
+
+    <!-- CENTER: Camera + Canvas -->
+    <section class="camera-section">
+      <div class="camera-wrapper" id="cameraWrapper">
+
+        <!-- Corner brackets -->
+        <div class="bracket tl"></div>
+        <div class="bracket tr"></div>
+        <div class="bracket bl"></div>
+        <div class="bracket br"></div>
+
+        <!-- Reticle -->
+        <div class="reticle" id="reticle">
+          <div class="reticle-h"></div>
+          <div class="reticle-v"></div>
+          <div class="reticle-circle"></div>
+        </div>
+
+        <video id="videoFeed" autoplay playsinline muted></video>
+        <canvas id="overlayCanvas"></canvas>
+
+        <!-- Bottom scan line -->
+        <div class="scan-sweep" id="scanSweep"></div>
+
+        <!-- Status badge on camera -->
+        <div class="cam-status-badge" id="camStatusBadge">
+          <div class="csb-dot" id="csbDot"></div>
+          <span id="csbText">DETECTING...</span>
+        </div>
+
+        <!-- No permission overlay -->
+        <div class="no-cam-overlay" id="noCamOverlay">
+          <div class="nco-icon">◉</div>
+          <div class="nco-title">CAMERA ACCESS REQUIRED</div>
+          <div class="nco-sub">Grant permission to activate SENTINEL</div>
+          <button class="nco-btn" id="retryBtn">AUTHORIZE CAMERA</button>
+        </div>
+      </div>
+
+      <!-- Status bar below camera -->
+      <div class="status-bar">
+        <div class="sb-left">
+          <span class="sb-label">ALERT LEVEL</span>
+        </div>
+        <div class="alert-level-bar">
+          <div class="alb-fill" id="alertLevelFill"></div>
+          <div class="alb-markers">
+            <span>AWAKE</span><span>DROWSY</span><span>SLEEPING</span>
+          </div>
+        </div>
+        <div class="sb-right">
+          <span id="closedTimer" class="closed-timer">EYES OPEN</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- RIGHT PANEL -->
+    <aside class="panel right-panel">
+      <div class="panel-header">
+        <span class="panel-label">DETECTION STATUS</span>
+        <div class="panel-line"></div>
+      </div>
+
+      <!-- Main status display -->
+      <div class="status-display" id="statusDisplay">
+        <div class="sd-ring" id="sdRing"></div>
+        <div class="sd-inner">
+          <div class="sd-icon" id="sdIcon">◎</div>
+          <div class="sd-label" id="sdLabel">AWAKE</div>
+          <div class="sd-sub" id="sdSub">ALL SYSTEMS NORMAL</div>
+        </div>
+      </div>
+
+      <div class="divider"></div>
+
+      <div class="panel-header">
+        <span class="panel-label">FACIAL LANDMARKS</span>
+        <div class="panel-line"></div>
+      </div>
+
+      <div class="landmark-toggles">
+        <label class="toggle-item">
+          <input type="checkbox" id="showMesh" checked />
+          <span class="toggle-track"></span>
+          <span class="toggle-label">FACE MESH</span>
+        </label>
+        <label class="toggle-item">
+          <input type="checkbox" id="showEyes" checked />
+          <span class="toggle-track"></span>
+          <span class="toggle-label">EYE CONTOURS</span>
+        </label>
+        <label class="toggle-item">
+          <input type="checkbox" id="showBrows" checked />
+          <span class="toggle-track"></span>
+          <span class="toggle-label">EYEBROWS</span>
+        </label>
+        <label class="toggle-item">
+          <input type="checkbox" id="showIris" checked />
+          <span class="toggle-track"></span>
+          <span class="toggle-label">IRIS TRACKING</span>
+        </label>
+        <label class="toggle-item">
+          <input type="checkbox" id="showLips" checked />
+          <span class="toggle-track"></span>
+          <span class="toggle-label">LIP CONTOUR</span>
+        </label>
+        <label class="toggle-item">
+          <input type="checkbox" id="showOval" checked />
+          <span class="toggle-track"></span>
+          <span class="toggle-label">FACE OVAL</span>
+        </label>
+      </div>
+
+      <div class="divider"></div>
+
+      <div class="panel-header">
+        <span class="panel-label">ALERT SETTINGS</span>
+        <div class="panel-line"></div>
+      </div>
+
+      <div class="alert-settings">
+        <div class="as-item">
+          <span class="as-label">SLEEP THRESHOLD</span>
+          <div class="as-control">
+            <input type="range" id="sleepThreshold" min="0" max="5" step="0.1" value="0" />
+            <span id="sleepThresholdVal">0.0s</span>
+          </div>
+        </div>
+        <div class="as-item">
+          <span class="as-label">EAR SENSITIVITY</span>
+          <div class="as-control">
+            <input type="range" id="earSensitivity" min="0.1" max="0.35" step="0.01" value="0.21" />
+            <span id="earSensitivityVal">0.21</span>
+          </div>
+        </div>
+        <div class="as-item">
+          <span class="as-label">AUDIO ALARM</span>
+          <label class="toggle-item">
+            <input type="checkbox" id="audioAlarm" checked />
+            <span class="toggle-track"></span>
+            <span class="toggle-label">ENABLED</span>
+          </label>
+        </div>
+      </div>
+
+      <div class="divider"></div>
+
+      <div class="panel-header">
+        <span class="panel-label">SESSION LOG</span>
+        <div class="panel-line"></div>
+      </div>
+      <div class="session-log" id="sessionLog">
+        <div class="log-entry init">[ SYSTEM BOOT ]</div>
+      </div>
+    </aside>
+
+  </main>
+
+  <!-- ===== FOOTER ===== -->
+  <footer class="hud-footer">
+    <div class="footer-left">
+      <span class="fl-item">MEDIAPIPE FACEMESH · 468 LANDMARKS</span>
+    </div>
+    <div class="footer-center">
+      <div class="footer-bars">
+        <div class="fb" id="fb1"></div>
+        <div class="fb" id="fb2"></div>
+        <div class="fb" id="fb3"></div>
+        <div class="fb" id="fb4"></div>
+        <div class="fb" id="fb5"></div>
+      </div>
+    </div>
+    <div class="footer-right">
+      <span class="fr-item" id="landmarkCount">LANDMARKS: 0</span>
+      <span class="fr-item" id="confidenceVal">CONFIDENCE: --</span>
+    </div>
+  </footer>
+
+  <script src="script.js"></script>
+</body>
+</html>
